@@ -33,7 +33,7 @@ type Queue interface {
 	Gc() error
 
 	// Set to asynchous subscribe
-	Subscribe(fn func(int64, []byte, error)) error
+	Subscribe(fn func(int64, []byte, func(bool), error)) error
 
 	// to free asynchous subscribe
 	FreeSubscribe()

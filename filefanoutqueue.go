@@ -44,7 +44,7 @@ type QueueFront struct {
 
 	subscribLock sync.Mutex
 
-	subscriber func(int64, []byte, error)
+	subscriber func(int64, []byte, func(bool), error)
 }
 
 // Open the queue files
@@ -212,7 +212,7 @@ func (q *FileFanoutQueue) Skip(fanoutID int64, count int64) error {
 }
 
 // Subscribe do async subscribe by target fanout id
-func (q *FileFanoutQueue) Subscribe(fanoutID int64, fn func(int64, []byte, error)) error {
+func (q *FileFanoutQueue) Subscribe(fanoutID int64, fn func(int64, []byte, func(bool), error)) error {
 	if fn == nil {
 		return errors.New("parameter 'fn' is nil")
 	}
@@ -320,7 +320,7 @@ func (q *QueueFront) updateQueueFrontIndex(count int64) (int64, error) {
 	return queueFrontIndex, nil
 }
 
-func (q *FileFanoutQueue) doSubscribe(index int64, data []byte, err error) {
+func (q *FileFanoutQueue) doSubscribe(index int64, data []byte, action func(bool), err error) {
 	for fanoutID, v := range q.frontIndexMap {
 		if v.subscriber != nil {
 			v.subscribLock.Lock()
@@ -332,16 +332,15 @@ func (q *FileFanoutQueue) doSubscribe(index int64, data []byte, err error) {
 	}
 }
 
-func (q *FileFanoutQueue) doLoopSubscribe(fanoutID int64, subscriber func(int64, []byte, error)) {
+func (q *FileFanoutQueue) doLoopSubscribe(fanoutID int64, subscriber func(int64, []byte, func(bool), error)) {
 	if subscriber == nil {
 		return
 	}
 	for {
 		index, bb, err := q.Dequeue(fanoutID)
-		if bb == nil || len(bb) == 0 {
+		if len(bb) == 0 {
 			break // queue is empty
 		}
-		subscriber(index, bb, err)
+		subscriber(index, bb, func(bool) {}, err)
 	}
-
 }

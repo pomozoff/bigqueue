@@ -93,7 +93,7 @@ type FileQueue struct {
 	options *Options
 
 	// set subscribe action
-	subscriber func(int64, []byte, error)
+	subscriber func(int64, []byte, func(bool), error)
 
 	enqueueChan chan bool
 
@@ -573,6 +573,10 @@ func (q *FileQueue) updateQueueFrontIndex() (int64, error) {
 	q.queueFrontWriteLock.Lock()
 	defer q.queueFrontWriteLock.Unlock()
 
+	return q.updateQueueFrontIndexUnsafe()
+}
+
+func (q *FileQueue) updateQueueFrontIndexUnsafe() (int64, error) {
 	queueFrontIndex := q.frontIndex
 	nextQueueFrontIndex := queueFrontIndex
 
@@ -773,7 +777,7 @@ func (q *FileQueue) Gc() error {
 }
 
 // Subscribe subscribe a call back function to subscribe message
-func (q *FileQueue) Subscribe(fn func(int64, []byte, error)) error {
+func (q *FileQueue) Subscribe(fn func(int64, []byte, func(bool), error)) error {
 	if q.enqueueChan == nil {
 		return ErrSubscribeFailedNoOpenErr
 	}
@@ -808,11 +812,27 @@ func (q *FileQueue) doLoopSubscribe() {
 			return
 		}
 		for {
-			index, bb, err := q.Dequeue()
-			if bb == nil {
-				break // queue is empty
+			if q.IsEmpty() {
+				break
 			}
-			q.subscriber(index, bb, err)
+
+			q.queueFrontWriteLock.Lock()
+
+			index := q.frontIndex
+			bb, err := q.peek(index)
+			if err != nil {
+				q.queueFrontWriteLock.Unlock()
+				break
+			}
+
+			q.subscriber(index, bb, func(succeed bool) {
+				// TODO: Check how it works when a client always fails the closure
+				if succeed {
+					index, err = q.updateQueueFrontIndexUnsafe()
+				}
+
+				q.queueFrontWriteLock.Unlock()
+			}, err)
 		}
 
 		loop := <-q.enqueueChan
