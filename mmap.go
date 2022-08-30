@@ -26,7 +26,8 @@ type DB struct {
 	path string
 	file *os.File
 
-	data *[maxMapSize]byte
+	dataref []byte
+	data    *[maxMapSize]byte
 
 	InitialMmapSize int
 
